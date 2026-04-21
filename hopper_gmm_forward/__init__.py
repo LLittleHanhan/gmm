@@ -6,18 +6,52 @@ Usage::
     c = hopper_gmm_fwd(a, b, batch_sizes)  # c = a @ b, grouped by batch_sizes
 """
 
+import glob
+import os
 import warnings
 
 import torch
 
-try:
-    from . import _C  # registers torch.ops.hopper_gmm_fwd.gmm
+_HAS_C = False
+_PKG_DIR = os.path.dirname(os.path.abspath(__file__))
+
+
+def _load_c_ext() -> bool:
+    """Locate and load the compiled _C*.so via torch.ops.load_library.
+
+    The extension registers ops under the ``hopper_gmm_fwd`` namespace using
+    ``TORCH_LIBRARY``; it does NOT expose a ``PyInit__C`` symbol, so we must
+    load it as a torch op library rather than importing it as a Python module.
+    """
+    # Match _C.so, _C.cpython-<abi>-<plat>.so, etc.
+    patterns = [
+        os.path.join(_PKG_DIR, "_C*.so"),
+        os.path.join(_PKG_DIR, "_C*.pyd"),
+    ]
+    candidates = []
+    for p in patterns:
+        candidates.extend(glob.glob(p))
+    if not candidates:
+        return False
+    # Prefer the shortest / most specific filename if multiple exist.
+    candidates.sort(key=len)
+    try:
+        torch.ops.load_library(candidates[0])
+    except Exception as e:  # noqa: BLE001
+        warnings.warn(
+            f"hopper_gmm_forward: failed to load {candidates[0]}: {e}",
+            RuntimeWarning,
+        )
+        return False
+    return True
+
+
+if _load_c_ext():
     _HAS_C = True
-except ImportError as e:
-    _HAS_C = False
+else:
     warnings.warn(
         "hopper_gmm_forward._C not built; did you run `setup.py build_ext --inplace`? "
-        f"Import error: {e}",
+        f"No _C*.so found in {_PKG_DIR}",
         RuntimeWarning,
     )
 
