@@ -66,6 +66,9 @@ ext = CUDAExtension(
             "-D_GLIBCXX_USE_CXX11_ABI=1",
         ],
     },
+    # CUTLASS 3.x Hopper 路径会用到 CUDA Driver API (cuDriverGetVersion,
+    # cuTensorMapEncodeTiled 等), 必须显式链 libcuda (stub 或驱动里的都行).
+    libraries=["cuda"],
 )
 
 setup(
